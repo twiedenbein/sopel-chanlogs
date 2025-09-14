@@ -211,11 +211,11 @@ def _log_to_database(bot, channel, nick, event_type, message_content, formatted_
         session = bot.db.session()
         dt = get_datetime(bot)
 
-        clean_channel = bot.make_identifier(clean_channel).lower()
+        channel = bot.make_identifier(channel).lower()
 
         log_entry = ChannelLog(
             timestamp=dt,
-            channel=clean_channel,
+            channel=channel,
             nick=nick,
             event_type=event_type,
             message=message_content,
@@ -421,10 +421,10 @@ def get_recent_messages(bot, channel, limit=100):
 
     try:
         session = bot.db.session()
-        clean_channel = bot.make_identifier(clean_channel).lower()
+        channel = bot.make_identifier(channel).lower()
 
         messages = session.query(ChannelLog).filter(
-            ChannelLog.channel == clean_channel
+            ChannelLog.channel == channel
         ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
 
         return messages
@@ -445,10 +445,10 @@ def search_messages(bot, channel, search_term, limit=50):
 
     try:
         session = bot.db.session()
-        clean_channel = bot.make_identifier(clean_channel).lower()
+        channel = bot.make_identifier(channel).lower()
 
         messages = session.query(ChannelLog).filter(
-            ChannelLog.channel == clean_channel,
+            ChannelLog.channel == channel,
             ChannelLog.message.contains(search_term)
         ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
 
