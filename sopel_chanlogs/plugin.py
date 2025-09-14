@@ -291,16 +291,16 @@ def log_message(bot, message):
 
     logline = _format_template(tpl, bot, message, message=message)
 
-    # Log to database if enabled
-    if _should_log_to_db(bot):
-        _log_to_database(bot, message.sender, message.nick, event_type, message, logline)
-
-    # Log to file if not disabled
+    # Log to file if enabled
     if _should_log_to_file(bot):
         fpath = get_fpath(bot, message)
         with bot.memory['chanlog_locks'][fpath]:
             with open(fpath, "ab") as f:
                 f.write(logline.encode('utf8'))
+
+    # Log to database if enabled
+    if _should_log_to_db(bot):
+        _log_to_database(bot, message.sender, message.nick, event_type, message, logline)
 
 
 @plugin.rule('.*')
@@ -311,16 +311,16 @@ def log_join(bot, trigger):
     tpl = bot.config.chanlogs.join_template or JOIN_TPL
     logline = _format_template(tpl, bot, trigger)
 
-    # Log to database if enabled
-    if _should_log_to_db(bot):
-        _log_to_database(bot, trigger.sender, trigger.nick, 'join', None, logline)
-
-    # Log to file if not disabled
+    # Log to file if enabled
     if _should_log_to_file(bot):
         fpath = get_fpath(bot, trigger, channel=trigger.sender)
         with bot.memory['chanlog_locks'][fpath]:
             with open(fpath, "ab") as f:
                 f.write(logline.encode('utf8'))
+
+    # Log to database if enabled
+    if _should_log_to_db(bot):
+        _log_to_database(bot, trigger.sender, trigger.nick, 'join', None, logline)
 
 
 @plugin.rule('.*')
@@ -331,16 +331,16 @@ def log_part(bot, trigger):
     tpl = bot.config.chanlogs.part_template or PART_TPL
     logline = _format_template(tpl, bot, trigger=trigger)
 
-    # Log to database if enabled
-    if _should_log_to_db(bot):
-        _log_to_database(bot, trigger.sender, trigger.nick, 'part', None, logline)
-
-    # Log to file if not disabled
+    # Log to file if enabled
     if _should_log_to_file(bot):
         fpath = get_fpath(bot, trigger, channel=trigger.sender)
         with bot.memory['chanlog_locks'][fpath]:
             with open(fpath, "ab") as f:
                 f.write(logline.encode('utf8'))
+
+    # Log to database if enabled
+    if _should_log_to_db(bot):
+        _log_to_database(bot, trigger.sender, trigger.nick, 'part', None, logline)
 
 
 @plugin.rule('.*')
@@ -357,16 +357,16 @@ def log_quit(bot, trigger):
     # write logline to *all* channels that the user was present in
     for channel in channels_copy:
         if trigger.nick in channel.users:
-            # Log to database if enabled
-            if _should_log_to_db(bot):
-                _log_to_database(bot, channel.name, trigger.nick, 'quit', None, logline)
-
-            # Log to file if not disabled
+            # Log to file if enabled
             if _should_log_to_file(bot):
                 fpath = get_fpath(bot, trigger, channel.name)
                 with bot.memory['chanlog_locks'][fpath]:
                     with open(fpath, "ab") as f:
                         f.write(logline.encode('utf8'))
+
+            # Log to database if enabled
+            if _should_log_to_db(bot):
+                _log_to_database(bot, channel.name, trigger.nick, 'quit', None, logline)
 
 
 @plugin.rule('.*')
@@ -383,16 +383,16 @@ def log_nick_change(bot, trigger):
     # write logline to *all* channels that the user is present in
     for channel in channels_copy:
         if old_nick in channel.users or new_nick in channel.users:
-            # Log to database if enabled
-            if _should_log_to_db(bot):
-                _log_to_database(bot, channel.name, old_nick, 'nick', new_nick, logline)
-
-            # Log to file if not disabled
+            # Log to file if enabled
             if _should_log_to_file(bot):
                 fpath = get_fpath(bot, trigger, channel.name)
                 with bot.memory['chanlog_locks'][fpath]:
                     with open(fpath, "ab") as f:
                         f.write(logline.encode('utf8'))
+
+            # Log to database if enabled
+            if _should_log_to_db(bot):
+                _log_to_database(bot, channel.name, old_nick, 'nick', new_nick, logline)
 
 
 @plugin.rule('.*')
@@ -404,16 +404,16 @@ def log_topic(bot, trigger):
     logline = _format_template(tpl, bot, trigger)
     topic_content = trigger.args[1] if len(trigger.args) > 1 else None
 
-    # Log to database if enabled
-    if _should_log_to_db(bot):
-        _log_to_database(bot, trigger.sender, trigger.nick, 'topic', topic_content, logline)
-
-    # Log to file if not disabled
+    # Log to file if enabled
     if _should_log_to_file(bot):
         fpath = get_fpath(bot, trigger, channel=trigger.sender)
         with bot.memory['chanlog_locks'][fpath]:
             with open(fpath, "ab") as f:
                 f.write(logline.encode('utf8'))
+
+    # Log to database if enabled
+    if _should_log_to_db(bot):
+        _log_to_database(bot, trigger.sender, trigger.nick, 'topic', topic_content, logline)
 
 
 # Optional query functions for database access
