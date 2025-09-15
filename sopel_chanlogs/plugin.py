@@ -43,7 +43,8 @@ Database Requirements:
 The database logging creates a 'channel_logs' table with the following fields:
 - id: Primary key
 - timestamp: When the event occurred
-- channel: Channel name (cleaned)
+- network: Network/server identifier (from server_alias or host)
+- channel: Channel name (normalized)
 - nick: User nickname
 - event_type: Type of event (message, action, join, part, quit, nick, topic)
 - message: Message content (for messages/actions/topics)
@@ -96,6 +97,7 @@ class ChannelLog(Base):
 
     id = Column(Integer, primary_key=True)
     timestamp = Column(DateTime, nullable=False)
+    network = Column(String(100), nullable=False, index=True)
     channel = Column(String(100), nullable=False, index=True)
     nick = Column(String(100), nullable=False, index=True)
     event_type = Column(String(20), nullable=False)  # message, action, join, part, quit, nick, topic
@@ -103,7 +105,7 @@ class ChannelLog(Base):
     raw_line = Column(Text, nullable=False)  # formatted log line as it appears in files
 
     def __repr__(self):
-        return f"<ChannelLog(timestamp={self.timestamp}, channel={self.channel}, nick={self.nick}, event_type={self.event_type})>"
+        return f"<ChannelLog(timestamp={self.timestamp}, network={self.network}, channel={self.channel}, nick={self.nick}, event_type={self.event_type})>"
 
 
 class ChanlogsSection(StaticSection):
@@ -201,20 +203,34 @@ def _create_db_tables(bot):
     """Create database tables if they don't exist."""
     try:
         Base.metadata.create_all(bot.db.engine)
+        bot.logger.info("Channel log database tables created successfully")
     except SQLAlchemyError as e:
         bot.logger.error(f"Failed to create channel log tables: {e}")
+        bot.logger.warning("Database logging will be disabled due to table creation failure")
+        # Disable database logging for this session to prevent repeated errors
+        bot.config.chanlogs.db_log = False
+    except Exception as e:
+        bot.logger.error(f"Unexpected error creating channel log tables: {e}")
+        bot.logger.warning("Database logging will be disabled due to unexpected error")
+        bot.config.chanlogs.db_log = False
 
 
 def _log_to_database(bot, channel, nick, event_type, message_content, formatted_line):
     """Log an entry to the database."""
+    session = bot.db.session()
     try:
-        session = bot.db.session()
         dt = get_datetime(bot)
+
+        # Get network name - fallback to hostname if not configured
+        network = getattr(bot.config.core, 'nick', bot.config.core.host)
+        if hasattr(bot.config.core, 'server_alias') and bot.config.core.server_alias:
+            network = bot.config.core.server_alias
 
         channel = bot.make_identifier(channel).lower()
 
         log_entry = ChannelLog(
             timestamp=dt,
+            network=network,
             channel=channel,
             nick=nick,
             event_type=event_type,
@@ -224,18 +240,11 @@ def _log_to_database(bot, channel, nick, event_type, message_content, formatted_
 
         session.add(log_entry)
         session.commit()
-
-    except SQLAlchemyError as e:
-        bot.logger.error(f"Failed to log to database: {e}")
-        try:
-            session.rollback()
-        except:
-            pass
+    except:
+        session.rollback()
+        raise
     finally:
-        try:
-            session.close()
-        except:
-            pass
+        session.close()
 
 
 def _should_log_to_file(bot):
@@ -246,6 +255,31 @@ def _should_log_to_file(bot):
 def _should_log_to_db(bot):
     """Determine if we should log to database based on configuration."""
     return bot.config.chanlogs.db_log
+
+
+def _safe_db_operation(bot, operation_name, operation_func, *args, **kwargs):
+    """Safely execute a database operation with error handling.
+
+    Args:
+        bot: The Sopel bot instance
+        operation_name: Human-readable name for the operation (for logging)
+        operation_func: The function to execute
+        *args, **kwargs: Arguments to pass to the operation function
+
+    Returns:
+        The result of the operation, or None if it failed
+    """
+    if not _should_log_to_db(bot):
+        return None
+
+    try:
+        return operation_func(*args, **kwargs)
+    except SQLAlchemyError as e:
+        bot.logger.error(f"Database {operation_name} failed: {e}")
+        return None
+    except Exception as e:
+        bot.logger.error(f"Unexpected error during database {operation_name}: {e}")
+        return None
 
 
 def setup(bot):
@@ -264,7 +298,15 @@ def setup(bot):
 
     # Create database tables if db logging is enabled
     if _should_log_to_db(bot):
-        _create_db_tables(bot)
+        try:
+            _create_db_tables(bot)
+        except Exception as e:
+            bot.logger.error(f"Critical error during database setup: {e}")
+            bot.logger.warning("Database logging has been disabled due to setup failure")
+            # Ensure file logging is still available if database fails
+            if not bot.config.chanlogs.file_log:
+                bot.logger.warning("Enabling file logging as fallback since database logging failed")
+                bot.config.chanlogs.file_log = True
 
 
 @plugin.rule('.*')
@@ -297,7 +339,7 @@ def log_message(bot, message):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _log_to_database(bot, message.sender, message.nick, event_type, message, logline)
+        _safe_db_operation(bot, "message logging", _log_to_database, bot, message.sender, message.nick, event_type, message, logline)
 
 
 @plugin.rule('.*')
@@ -317,7 +359,7 @@ def log_join(bot, trigger):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _log_to_database(bot, trigger.sender, trigger.nick, 'join', None, logline)
+        _safe_db_operation(bot, "join logging", _log_to_database, bot, trigger.sender, trigger.nick, 'join', None, logline)
 
 
 @plugin.rule('.*')
@@ -337,7 +379,7 @@ def log_part(bot, trigger):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _log_to_database(bot, trigger.sender, trigger.nick, 'part', None, logline)
+        _safe_db_operation(bot, "part logging", _log_to_database, bot, trigger.sender, trigger.nick, 'part', None, logline)
 
 
 @plugin.rule('.*')
@@ -363,7 +405,7 @@ def log_quit(bot, trigger):
 
             # Log to database if enabled
             if _should_log_to_db(bot):
-                _log_to_database(bot, channel.name, trigger.nick, 'quit', None, logline)
+                _safe_db_operation(bot, "quit logging", _log_to_database, bot, channel.name, trigger.nick, 'quit', None, logline)
 
 
 @plugin.rule('.*')
@@ -389,7 +431,7 @@ def log_nick_change(bot, trigger):
 
             # Log to database if enabled
             if _should_log_to_db(bot):
-                _log_to_database(bot, channel.name, old_nick, 'nick', new_nick, logline)
+                _safe_db_operation(bot, "nick change logging", _log_to_database, bot, channel.name, old_nick, 'nick', new_nick, logline)
 
 
 @plugin.rule('.*')
@@ -410,54 +452,68 @@ def log_topic(bot, trigger):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _log_to_database(bot, trigger.sender, trigger.nick, 'topic', topic_content, logline)
+        _safe_db_operation(bot, "topic logging", _log_to_database, bot, trigger.sender, trigger.nick, 'topic', topic_content, logline)
+
+
+def _query_recent_messages(bot, channel, limit):
+    """Internal function to query recent messages."""
+    session = bot.db.session()
+    try:
+        # Get network name - same logic as in _log_to_database
+        network = getattr(bot.config.core, 'nick', bot.config.core.host)
+        if hasattr(bot.config.core, 'server_alias') and bot.config.core.server_alias:
+            network = bot.config.core.server_alias
+
+        channel = bot.make_identifier(channel).lower()
+
+        messages = session.query(ChannelLog).filter(
+            ChannelLog.network == network,
+            ChannelLog.channel == channel
+        ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
+
+        bot.logger.debug(f"Retrieved {len(messages)} recent messages from {channel}")
+        return messages
+    finally:
+        session.close()
+
+
+def _search_messages_internal(bot, channel, search_term, limit):
+    """Internal function to search for messages."""
+    session = bot.db.session()
+    try:
+        # Get network name - same logic as in _log_to_database
+        network = getattr(bot.config.core, 'nick', bot.config.core.host)
+        if hasattr(bot.config.core, 'server_alias') and bot.config.core.server_alias:
+            network = bot.config.core.server_alias
+
+        channel = bot.make_identifier(channel).lower()
+
+        messages = session.query(ChannelLog).filter(
+            ChannelLog.network == network,
+            ChannelLog.channel == channel,
+            ChannelLog.message.contains(search_term)
+        ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
+
+        bot.logger.debug(f"Found {len(messages)} messages containing '{search_term}' in {channel}")
+        return messages
+    finally:
+        session.close()
 
 
 # Optional query functions for database access
 def get_recent_messages(bot, channel, limit=100):
     """Get recent messages from a channel (requires db_log enabled)."""
     if not _should_log_to_db(bot):
+        bot.logger.debug("Database logging is disabled, cannot query recent messages")
         return None
 
-    try:
-        session = bot.db.session()
-        channel = bot.make_identifier(channel).lower()
-
-        messages = session.query(ChannelLog).filter(
-            ChannelLog.channel == channel
-        ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
-
-        return messages
-    except SQLAlchemyError as e:
-        bot.logger.error(f"Failed to query database: {e}")
-        return None
-    finally:
-        try:
-            session.close()
-        except:
-            pass
+    return _safe_db_operation(bot, "recent messages query", _query_recent_messages, bot, channel, limit)
 
 
 def search_messages(bot, channel, search_term, limit=50):
     """Search for messages containing a term (requires db_log enabled)."""
     if not _should_log_to_db(bot):
+        bot.logger.debug("Database logging is disabled, cannot search messages")
         return None
 
-    try:
-        session = bot.db.session()
-        channel = bot.make_identifier(channel).lower()
-
-        messages = session.query(ChannelLog).filter(
-            ChannelLog.channel == channel,
-            ChannelLog.message.contains(search_term)
-        ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
-
-        return messages
-    except SQLAlchemyError as e:
-        bot.logger.error(f"Failed to search database: {e}")
-        return None
-    finally:
-        try:
-            session.close()
-        except:
-            pass
+    return _safe_db_operation(bot, "message search", _search_messages_internal, bot, channel, search_term, limit)
