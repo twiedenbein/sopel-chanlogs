@@ -204,15 +204,15 @@ def _create_db_tables(bot):
     """Create database tables if they don't exist."""
     try:
         Base.metadata.create_all(bot.db.engine)
-        bot.logger.info("Channel log database tables created successfully")
+        LOGGER.info("Channel log database tables created successfully")
     except SQLAlchemyError as e:
-        bot.logger.error(f"Failed to create channel log tables: {e}")
-        bot.logger.warning("Database logging will be disabled due to table creation failure")
+        LOGGER.error(f"Failed to create channel log tables: {e}")
+        LOGGER.warning("Database logging will be disabled due to table creation failure")
         # Disable database logging for this session to prevent repeated errors
         bot.config.chanlogs.db_log = False
     except Exception as e:
-        bot.logger.error(f"Unexpected error creating channel log tables: {e}")
-        bot.logger.warning("Database logging will be disabled due to unexpected error")
+        LOGGER.error(f"Unexpected error creating channel log tables: {e}")
+        LOGGER.warning("Database logging will be disabled due to unexpected error")
         bot.config.chanlogs.db_log = False
 
 
@@ -276,10 +276,10 @@ def _safe_db_operation(bot, operation_name, operation_func, *args, **kwargs):
     try:
         return operation_func(*args, **kwargs)
     except SQLAlchemyError as e:
-        bot.logger.error(f"Database {operation_name} failed: {e}")
+        LOGGER.error(f"Database {operation_name} failed: {e}")
         return None
     except Exception as e:
-        bot.logger.error(f"Unexpected error during database {operation_name}: {e}")
+        LOGGER.error(f"Unexpected error during database {operation_name}: {e}")
         return None
 
 
@@ -302,11 +302,11 @@ def setup(bot):
         try:
             _create_db_tables(bot)
         except Exception as e:
-            bot.logger.error(f"Critical error during database setup: {e}")
-            bot.logger.warning("Database logging has been disabled due to setup failure")
+            LOGGER.error(f"Critical error during database setup: {e}")
+            LOGGER.warning("Database logging has been disabled due to setup failure")
             # Ensure file logging is still available if database fails
             if not bot.config.chanlogs.file_log:
-                bot.logger.warning("Enabling file logging as fallback since database logging failed")
+                LOGGER.warning("Enabling file logging as fallback since database logging failed")
                 bot.config.chanlogs.file_log = True
 
 
@@ -472,7 +472,7 @@ def _query_recent_messages(bot, channel, limit):
             ChannelLog.channel == channel
         ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
 
-        bot.logger.debug(f"Retrieved {len(messages)} recent messages from {channel}")
+        LOGGER.debug(f"Retrieved {len(messages)} recent messages from {channel}")
         return messages
     finally:
         session.close()
@@ -495,7 +495,7 @@ def _search_messages_internal(bot, channel, search_term, limit):
             ChannelLog.message.contains(search_term)
         ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
 
-        bot.logger.debug(f"Found {len(messages)} messages containing '{search_term}' in {channel}")
+        LOGGER.debug(f"Found {len(messages)} messages containing '{search_term}' in {channel}")
         return messages
     finally:
         session.close()
@@ -505,7 +505,7 @@ def _search_messages_internal(bot, channel, search_term, limit):
 def get_recent_messages(bot, channel, limit=100):
     """Get recent messages from a channel (requires db_log enabled)."""
     if not _should_log_to_db(bot):
-        bot.logger.debug("Database logging is disabled, cannot query recent messages")
+        LOGGER.debug("Database logging is disabled, cannot query recent messages")
         return None
 
     return _safe_db_operation(bot, "recent messages query", _query_recent_messages, bot, channel, limit)
@@ -514,7 +514,7 @@ def get_recent_messages(bot, channel, limit=100):
 def search_messages(bot, channel, search_term, limit=50):
     """Search for messages containing a term (requires db_log enabled)."""
     if not _should_log_to_db(bot):
-        bot.logger.debug("Database logging is disabled, cannot search messages")
+        LOGGER.debug("Database logging is disabled, cannot search messages")
         return None
 
     return _safe_db_operation(bot, "message search", _search_messages_internal, bot, channel, search_term, limit)
