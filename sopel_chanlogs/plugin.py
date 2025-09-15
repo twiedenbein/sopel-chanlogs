@@ -43,7 +43,6 @@ Database Requirements:
 The database logging creates a 'channel_logs' table with the following fields:
 - id: Primary key
 - timestamp: When the event occurred
-- network: Network/server identifier (from server_alias or host)
 - channel: Channel name (normalized)
 - nick: User nickname
 - event_type: Type of event (message, action, join, part, quit, nick, topic)
@@ -98,7 +97,6 @@ class ChannelLog(Base):
 
     id = Column(Integer, primary_key=True)
     timestamp = Column(DateTime, nullable=False)
-    network = Column(String(100), nullable=False, index=True)
     channel = Column(String(100), nullable=False, index=True)
     nick = Column(String(100), nullable=False, index=True)
     event_type = Column(String(20), nullable=False)  # message, action, join, part, quit, nick, topic
@@ -106,7 +104,7 @@ class ChannelLog(Base):
     raw_line = Column(Text, nullable=False)  # formatted log line as it appears in files
 
     def __repr__(self):
-        return f"<ChannelLog(timestamp={self.timestamp}, network={self.network}, channel={self.channel}, nick={self.nick}, event_type={self.event_type})>"
+        return f"<ChannelLog(timestamp={self.timestamp}, channel={self.channel}, nick={self.nick}, event_type={self.event_type})>"
 
 
 class ChanlogsSection(StaticSection):
@@ -221,17 +219,10 @@ def _log_to_database(bot, channel, nick, event_type, message_content, formatted_
     session = bot.db.session()
     try:
         dt = get_datetime(bot)
-
-        # Get network name - fallback to hostname if not configured
-        network = getattr(bot.config.core, 'nick', bot.config.core.host)
-        if hasattr(bot.config.core, 'server_alias') and bot.config.core.server_alias:
-            network = bot.config.core.server_alias
-
         channel = bot.make_identifier(channel).lower()
 
         log_entry = ChannelLog(
             timestamp=dt,
-            network=network,
             channel=channel,
             nick=nick,
             event_type=event_type,
@@ -460,15 +451,9 @@ def _query_recent_messages(bot, channel, limit):
     """Internal function to query recent messages."""
     session = bot.db.session()
     try:
-        # Get network name - same logic as in _log_to_database
-        network = getattr(bot.config.core, 'nick', bot.config.core.host)
-        if hasattr(bot.config.core, 'server_alias') and bot.config.core.server_alias:
-            network = bot.config.core.server_alias
-
         channel = bot.make_identifier(channel).lower()
 
         messages = session.query(ChannelLog).filter(
-            ChannelLog.network == network,
             ChannelLog.channel == channel
         ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
 
@@ -482,15 +467,9 @@ def _search_messages_internal(bot, channel, search_term, limit):
     """Internal function to search for messages."""
     session = bot.db.session()
     try:
-        # Get network name - same logic as in _log_to_database
-        network = getattr(bot.config.core, 'nick', bot.config.core.host)
-        if hasattr(bot.config.core, 'server_alias') and bot.config.core.server_alias:
-            network = bot.config.core.server_alias
-
         channel = bot.make_identifier(channel).lower()
 
         messages = session.query(ChannelLog).filter(
-            ChannelLog.network == network,
             ChannelLog.channel == channel,
             ChannelLog.message.contains(search_term)
         ).order_by(ChannelLog.timestamp.desc()).limit(limit).all()
