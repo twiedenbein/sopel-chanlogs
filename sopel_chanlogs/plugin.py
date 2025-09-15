@@ -66,7 +66,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
 
-from sopel import plugin
+from sopel import plugin, tools
 from sopel.config.types import (
     BooleanAttribute,
     FilenameAttribute,
@@ -75,6 +75,7 @@ from sopel.config.types import (
 )
 from sopel.tools.memories import SopelMemoryWithDefault
 
+LOGGER = tools.get_logger('chanlogs')
 
 MESSAGE_TPL = "{datetime}  <{trigger.nick}> {message}"
 ACTION_TPL = "{datetime}  * {trigger.nick} {message}"
