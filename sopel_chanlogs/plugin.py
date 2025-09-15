@@ -47,7 +47,6 @@ The database logging creates a 'channel_logs' table with the following fields:
 - nick: User nickname
 - event_type: Type of event (message, action, join, part, quit, nick, topic)
 - message: Message content (for messages/actions/topics)
-- raw_line: Formatted log line as it would appear in files
 
 Query Functions:
 - get_recent_messages(bot, channel, limit=100): Get recent messages from a channel
@@ -101,7 +100,6 @@ class ChannelLog(Base):
     nick = Column(String(100), nullable=False, index=True)
     event_type = Column(String(20), nullable=False)  # message, action, join, part, quit, nick, topic
     message = Column(Text, nullable=True)  # the actual message content
-    raw_line = Column(Text, nullable=False)  # formatted log line as it appears in files
 
     def __repr__(self):
         return f"<ChannelLog(timestamp={self.timestamp}, channel={self.channel}, nick={self.nick}, event_type={self.event_type})>"
@@ -214,7 +212,7 @@ def _create_db_tables(bot):
         bot.config.chanlogs.db_log = False
 
 
-def _log_to_database(bot, channel, nick, event_type, message_content, formatted_line):
+def _log_to_database(bot, channel, nick, event_type, message_content):
     """Log an entry to the database."""
     session = bot.db.session()
     try:
@@ -226,8 +224,7 @@ def _log_to_database(bot, channel, nick, event_type, message_content, formatted_
             channel=channel,
             nick=nick,
             event_type=event_type,
-            message=message_content,
-            raw_line=formatted_line.rstrip('\n')
+            message=message_content
         )
 
         session.add(log_entry)
@@ -331,7 +328,7 @@ def log_message(bot, message):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _safe_db_operation(bot, "message logging", _log_to_database, bot, message.sender, message.nick, event_type, message, logline)
+        _safe_db_operation(bot, "message logging", _log_to_database, bot, message.sender, message.nick, event_type, message)
 
 
 @plugin.rule('.*')
@@ -351,7 +348,7 @@ def log_join(bot, trigger):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _safe_db_operation(bot, "join logging", _log_to_database, bot, trigger.sender, trigger.nick, 'join', None, logline)
+        _safe_db_operation(bot, "join logging", _log_to_database, bot, trigger.sender, trigger.nick, 'join', None)
 
 
 @plugin.rule('.*')
@@ -371,7 +368,7 @@ def log_part(bot, trigger):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _safe_db_operation(bot, "part logging", _log_to_database, bot, trigger.sender, trigger.nick, 'part', None, logline)
+        _safe_db_operation(bot, "part logging", _log_to_database, bot, trigger.sender, trigger.nick, 'part', None)
 
 
 @plugin.rule('.*')
@@ -397,7 +394,7 @@ def log_quit(bot, trigger):
 
             # Log to database if enabled
             if _should_log_to_db(bot):
-                _safe_db_operation(bot, "quit logging", _log_to_database, bot, channel.name, trigger.nick, 'quit', None, logline)
+                _safe_db_operation(bot, "quit logging", _log_to_database, bot, channel.name, trigger.nick, 'quit', None)
 
 
 @plugin.rule('.*')
@@ -423,7 +420,7 @@ def log_nick_change(bot, trigger):
 
             # Log to database if enabled
             if _should_log_to_db(bot):
-                _safe_db_operation(bot, "nick change logging", _log_to_database, bot, channel.name, old_nick, 'nick', new_nick, logline)
+                _safe_db_operation(bot, "nick change logging", _log_to_database, bot, channel.name, old_nick, 'nick', new_nick)
 
 
 @plugin.rule('.*')
@@ -444,7 +441,7 @@ def log_topic(bot, trigger):
 
     # Log to database if enabled
     if _should_log_to_db(bot):
-        _safe_db_operation(bot, "topic logging", _log_to_database, bot, trigger.sender, trigger.nick, 'topic', topic_content, logline)
+        _safe_db_operation(bot, "topic logging", _log_to_database, bot, trigger.sender, trigger.nick, 'topic', topic_content)
 
 
 def _query_recent_messages(bot, channel, limit):
